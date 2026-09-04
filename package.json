@@ -1,0 +1,42 @@
+{
+  "name": "assert-local",
+  "version": "0.0.0",
+  "description": "Run Assert locally with your GitHub CLI credentials",
+  "type": "module",
+  "bin": {
+    "assert-local": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": "^20.17.0 || ^22.13.0 || >=23.5.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "prettier --check .",
+    "lint:fix": "prettier --write ."
+  },
+  "dependencies": {
+    "@inquirer/core": "^12.0.2",
+    "@inquirer/prompts": "^8.0.0",
+    "commander": "^14.0.0",
+    "execa": "^9.6.0",
+    "fastify": "^5.6.0",
+    "open": "^10.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.9.6",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  },
+  "packageManager": "pnpm@11.20.0"
+}
