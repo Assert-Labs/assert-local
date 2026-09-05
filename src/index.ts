@@ -4,6 +4,10 @@ import { reviewCommand } from './commands/review.js'
 const program = new Command()
   .name('assert-local')
   .description('Run Assert locally with your GitHub CLI credentials')
+  .addHelpText(
+    'after',
+    '\nAI-powered pull request review. Learn more at https://assert.dev\nGet started: assert-local review',
+  )
   .version('0.0.0')
 
 program

@@ -1,4 +1,5 @@
 import type { CliConfiguration } from './config.js'
+import { fetchWithDiagnostics } from './fetch.js'
 
 export interface AssertSession {
   token: string
@@ -27,7 +28,9 @@ export class AssertAccountNotFoundError extends Error {}
 async function responseMessage(response: Response) {
   try {
     const body = (await response.json()) as { message?: unknown }
-    return typeof body.message === 'string' ? body.message : undefined
+    return body != null && typeof body.message === 'string'
+      ? body.message
+      : undefined
   } catch {
     return undefined
   }
@@ -38,7 +41,7 @@ export async function exchangeGithubToken(
   githubToken: string,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(
+  const response = await fetchWithDiagnostics(
     new URL('/api/auth/cli/exchange', configuration.apiUrl),
     {
       method: 'POST',
@@ -47,24 +50,65 @@ export async function exchangeGithubToken(
         'content-type': 'application/json',
       },
       body: JSON.stringify({ providerId: 'github' }),
+      redirect: 'manual',
       signal: AbortSignal.any([
         AbortSignal.timeout(30_000),
         ...(signal == null ? [] : [signal]),
       ]),
     },
+    'Assert sign-in',
   )
   if (response.status === 404) {
-    throw new AssertAccountNotFoundError(
-      'No Assert account is linked to this GitHub user.',
+    if (
+      (await responseMessage(response)) ===
+      'No Assert account is linked to this GitHub account.'
+    ) {
+      throw new AssertAccountNotFoundError(
+        'No Assert account is linked to this GitHub user.',
+      )
+    }
+    throw new Error(
+      `Assert sign-in at ${configuration.apiUrl} returned HTTP 404. This server may not support Assert Local yet. Check ASSERT_API_URL and that the token-exchange endpoint is deployed.`,
     )
   }
   if (!response.ok) {
+    await response.body?.cancel()
+    const hint =
+      response.status >= 300 && response.status < 400
+        ? 'The API redirected the request. Check ASSERT_API_URL and any access gateway; use the API origin, not the website.'
+        : response.status === 401
+          ? 'Authentication was rejected. Check the active account with `gh auth status` and any API access restrictions.'
+          : response.status === 403
+            ? 'Access was denied. Check the API access restrictions and your GitHub account permissions.'
+            : response.status === 409
+              ? 'The GitHub account could not be matched to a unique Assert account with a personal workspace. Sign in to the Assert app or contact support.'
+              : response.status === 429
+                ? 'The server is rate limiting requests. Wait before trying again.'
+                : 'Check service availability and that the server supports Assert Local, then retry.'
     throw new Error(
-      (await responseMessage(response)) ??
-        `Assert authentication failed (${response.status})`,
+      `Assert sign-in at ${configuration.apiUrl} returned HTTP ${response.status}. ${hint}`,
     )
   }
-  return (await response.json()) as AssertSession
+  try {
+    const session = (await response.json()) as AssertSession
+    if (
+      typeof session?.token !== 'string' ||
+      !session.token ||
+      typeof session.expiresAt !== 'string' ||
+      !Number.isFinite(Date.parse(session.expiresAt)) ||
+      typeof session.user?.id !== 'string' ||
+      typeof session.githubUser?.id !== 'string' ||
+      typeof session.githubUser.login !== 'string' ||
+      typeof session.workspace?.id !== 'string'
+    ) {
+      throw new Error('Invalid session response')
+    }
+    return session
+  } catch {
+    throw new Error(
+      `Assert sign-in at ${configuration.apiUrl} returned an invalid response (HTTP ${response.status}). Check ASSERT_API_URL points to an API server that supports Assert Local, not a website or sign-in gateway.`,
+    )
+  }
 }
 
 export function createAssertClient(
@@ -120,7 +164,11 @@ export function createAssertClient(
       ])
       const send = (token: string) => {
         headers.set('authorization', `Bearer ${token}`)
-        return fetch(url, { ...init, headers, signal, redirect: 'manual' })
+        return fetchWithDiagnostics(
+          url,
+          { ...init, headers, signal, redirect: 'manual' },
+          'Assert API request',
+        )
       }
       const token = session.token
       const response = await send(token)

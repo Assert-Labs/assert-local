@@ -1,8 +1,13 @@
 # Assert Local
 
-Assert Local allows you to use the full functionality of [Assert](assert.dev)'s
-world-class review experience using your local credentials. It does not require
-installing the Assert GitHub app.
+Assert Local brings [Assert](https://assert.dev)'s AI-powered pull request review
+to your browser using your GitHub CLI credentials. Get a personal PR inbox and
+AI-assisted diffs without installing the Assert GitHub App on a repository or
+copying a personal access token into Assert.
+
+The CLI runs a local proxy, not an offline review engine: Assert's hosted service
+provides the UI and handles review processing. [Sign in or create an Assert account](https://app.assert.dev)
+with the same GitHub account you use in `gh`.
 
 ## Requirements
 
