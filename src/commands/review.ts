@@ -86,13 +86,8 @@ async function ensureGh() {
 export async function reviewCommand(options: { open: boolean }) {
   const configuration = getConfiguration()
   console.log(`
- ▄█▀▀▀▀▀███▀▀█▄        ██████                                            ██
-█▀     ▄█ ▄▄████     ████  ██                                            ██
-█     █▀ ▄█    █     ██    ██    ██████    ██████    ████    ██  ████  ██████
-█   ▄█▀ ████████   ████    ██  ████      ████      ██    ██  ████        ██
-█  ▄█ ▄█▀ ▄▄▄▄▄█   ██████████    ████      ████    ████████  ██          ██
-█▄█▀ ▄█ ▄█▀   ▄█   ██      ██      ████      ████  ██        ██          ██
- ▀█▄██▄▄█▄▄▄▄█▀    ██      ██  ██████    ██████      ██████  ██          ████
+▄▀█ █▀ █▀ █▀▀ █▀█ ▀█▀
+█▀█ ▄█ ▄█ ██▄ █▀▄  █
 
 Review code in your browser using the full power of Assert's AI-assisted diffs.
 This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
