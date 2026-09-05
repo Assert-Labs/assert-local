@@ -85,8 +85,16 @@ async function ensureGh() {
 
 export async function reviewCommand(options: { open: boolean }) {
   const configuration = getConfiguration()
-  console.log(`
-Assert Local — Move fast, don't break things
+  console.log(String.raw`
+ .----------.
+ |     / .--|       _                                _
+ |    / /   |      / \     ___   ___    ___   _ __  | |_
+ |   / /----|     / _ \   / __| / __|  / _ \ | '__| | __|
+ |  / / .---|    / ___ \  \__ \ \__ \ |  __/ | |    | |_
+ | / / /    |   /_/   \_\ |___/ |___/  \___| |_|     \__|
+ '----------'
+
+Move fast, don't break things
 
 Review code in your browser using the full power of Assert's AI-assisted diffs.
 This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
