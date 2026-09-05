@@ -4,6 +4,7 @@ import Fastify from 'fastify'
 import { createAssertClient, type AssertSession } from './assert-api.js'
 import type { CliConfiguration } from './config.js'
 import { startPolling } from './poll.js'
+import { fetchWithDiagnostics } from './fetch.js'
 
 interface LocalServerOptions {
   configuration: CliConfiguration
@@ -182,7 +183,7 @@ export async function startLocalServer(options: LocalServerOptions) {
       }
       const response = await (isApiRequest
         ? api.request(path, init)
-        : fetch(targetUrl, init))
+        : fetchWithDiagnostics(targetUrl, init, 'Loading the Assert web app'))
 
       reply.code(response.status)
       response.headers.forEach((value, name) => {

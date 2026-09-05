@@ -1,4 +1,5 @@
 import type { CliConfiguration } from './config.js'
+import { fetchWithDiagnostics } from './fetch.js'
 
 export interface AssertSession {
   token: string
@@ -27,7 +28,9 @@ export class AssertAccountNotFoundError extends Error {}
 async function responseMessage(response: Response) {
   try {
     const body = (await response.json()) as { message?: unknown }
-    return typeof body.message === 'string' ? body.message : undefined
+    return body != null && typeof body.message === 'string'
+      ? body.message
+      : undefined
   } catch {
     return undefined
   }
@@ -38,7 +41,7 @@ export async function exchangeGithubToken(
   githubToken: string,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(
+  const response = await fetchWithDiagnostics(
     new URL('/api/auth/cli/exchange', configuration.apiUrl),
     {
       method: 'POST',
@@ -47,24 +50,63 @@ export async function exchangeGithubToken(
         'content-type': 'application/json',
       },
       body: JSON.stringify({ providerId: 'github' }),
+      redirect: 'manual',
       signal: AbortSignal.any([
         AbortSignal.timeout(30_000),
         ...(signal == null ? [] : [signal]),
       ]),
     },
+    'Assert sign-in',
   )
   if (response.status === 404) {
-    throw new AssertAccountNotFoundError(
-      'No Assert account is linked to this GitHub user.',
+    if (
+      (await responseMessage(response)) ===
+      'No Assert account is linked to this GitHub account.'
+    ) {
+      throw new AssertAccountNotFoundError(
+        'No Assert account is linked to this GitHub user.',
+      )
+    }
+    throw new Error(
+      'Assert sign-in is currently unavailable (HTTP 404). This may be a service issue or an outdated CLI. Try again later, or update with `npx assert-local@latest review`. If it continues, contact support@assert.dev.',
     )
   }
   if (!response.ok) {
+    await response.body?.cancel()
+    const hint =
+      response.status >= 300 && response.status < 400
+        ? 'Sign-in was unexpectedly redirected. If your network requires a browser login, complete it and try again. If it continues, contact support@assert.dev.'
+        : response.status === 401
+          ? 'Your GitHub sign-in was not accepted. Run `gh auth status` and make sure you are using the GitHub account linked to Assert. If you need to sign in again, run `gh auth login`.'
+          : response.status === 403
+            ? 'Access was denied. Make sure your GitHub account has access to Assert. If it continues, contact support@assert.dev.'
+            : response.status === 409
+              ? 'We could not connect your GitHub account to Assert. Sign in to the Assert app with GitHub. If it continues, contact support@assert.dev.'
+              : response.status === 429
+                ? 'Too many requests were made. Wait a few minutes before trying again.'
+                : 'Assert could not complete sign-in. Try again later. If it continues, contact support@assert.dev.'
+    throw new Error(`Assert sign-in failed (HTTP ${response.status}). ${hint}`)
+  }
+  try {
+    const session = (await response.json()) as AssertSession
+    if (
+      typeof session?.token !== 'string' ||
+      !session.token ||
+      typeof session.expiresAt !== 'string' ||
+      !Number.isFinite(Date.parse(session.expiresAt)) ||
+      typeof session.user?.id !== 'string' ||
+      typeof session.githubUser?.id !== 'string' ||
+      typeof session.githubUser.login !== 'string' ||
+      typeof session.workspace?.id !== 'string'
+    ) {
+      throw new Error('Invalid session response')
+    }
+    return session
+  } catch {
     throw new Error(
-      (await responseMessage(response)) ??
-        `Assert authentication failed (${response.status})`,
+      `Assert sign-in returned an unexpected response (HTTP ${response.status}). Try again, or update with \`npx assert-local@latest review\`. If it continues, contact support@assert.dev.`,
     )
   }
-  return (await response.json()) as AssertSession
 }
 
 export function createAssertClient(
@@ -120,7 +162,11 @@ export function createAssertClient(
       ])
       const send = (token: string) => {
         headers.set('authorization', `Bearer ${token}`)
-        return fetch(url, { ...init, headers, signal, redirect: 'manual' })
+        return fetchWithDiagnostics(
+          url,
+          { ...init, headers, signal, redirect: 'manual' },
+          'Connecting to Assert',
+        )
       }
       const token = session.token
       const response = await send(token)

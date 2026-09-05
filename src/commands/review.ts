@@ -5,7 +5,7 @@ import {
   AssertAccountNotFoundError,
   exchangeGithubToken,
 } from '../assert-api.js'
-import { getConfiguration } from '../config.js'
+import { getConfiguration, type CliConfiguration } from '../config.js'
 import {
   getGithubUser,
   getGhToken,
@@ -22,9 +22,7 @@ import {
   rememberRepository,
 } from '../preferences.js'
 import { chooseRepository } from '../repositories.js'
-async function authenticate() {
-  const configuration = getConfiguration()
-
+async function authenticate(configuration: CliConfiguration) {
   for (;;) {
     const githubUser = await getGithubUser()
     const githubToken = await getGhToken()
@@ -35,7 +33,7 @@ async function authenticate() {
           'The active gh account changed during setup. Run `assert-local review` again.',
         )
       }
-      return { configuration, githubUser, session }
+      return { githubUser, session }
     } catch (error) {
       if (!(error instanceof AssertAccountNotFoundError)) throw error
 
@@ -86,11 +84,20 @@ async function ensureGh() {
 }
 
 export async function reviewCommand(options: { open: boolean }) {
+  const configuration = getConfiguration()
+  console.log(`
+Assert Local — Move fast, don't break things
+
+Review code in your browser using the full power of Assert's AI-assisted diffs.
+This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
+
+You’ll need an Assert account linked to GitHub.
+`)
   if (!(await ensureGh())) return
 
-  const authenticated = await authenticate()
+  const authenticated = await authenticate(configuration)
   if (authenticated == null) return
-  const { configuration, githubUser, session } = authenticated
+  const { githubUser, session } = authenticated
 
   console.log(
     `\nGitHub: @${githubUser.login}\nAssert: ${session.user.name} <${session.user.email}>`,

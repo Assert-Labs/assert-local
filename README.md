@@ -4,6 +4,8 @@ Assert Local allows you to use the full functionality of [Assert](assert.dev)'s
 world-class review experience using your local credentials. It does not require
 installing the Assert GitHub app.
 
+[Sign in or create an Assert account](https://app.assert.dev)
+
 ## Requirements
 
 - Node.js 20.17+, 22.13+, or 23.5+ (matching the prompt library's requirements)
