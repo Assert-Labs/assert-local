@@ -10,6 +10,7 @@ interface LocalServerOptions {
   configuration: CliConfiguration
   session: AssertSession
   repository: { owner: string; repo: string }
+  pullNumber?: number
   refreshSession: (signal: AbortSignal) => Promise<AssertSession>
   warmIntervalMs?: number | false
   onWarmError?: (error: unknown) => void
@@ -94,6 +95,7 @@ export async function startLocalServer(options: LocalServerOptions) {
   const launchToken = crypto.randomBytes(24).toString('base64url')
   const browserToken = crypto.randomBytes(24).toString('base64url')
   let localOrigin = ''
+  let browserCookie = ''
 
   fastify.all('/*', async (request, reply) => {
     const expectedHost = new URL(localOrigin).host
@@ -109,15 +111,20 @@ export async function startLocalServer(options: LocalServerOptions) {
     if (pathname === `/__assert-local/launch/${launchToken}`) {
       reply.header(
         'set-cookie',
-        `assert_local=${browserToken}; Path=/; HttpOnly; SameSite=Strict`,
+        `${browserCookie}; Path=/; HttpOnly; SameSite=Strict`,
       )
-      return reply.redirect('/local/inbox')
+      const { owner, repo } = options.repository
+      return reply.redirect(
+        options.pullNumber == null
+          ? '/local/inbox'
+          : `/review/github/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${options.pullNumber}`,
+      )
     }
 
     const cookies = request.headers.cookie
       ?.split(';')
       .map((part) => part.trim())
-    if (!cookies?.includes(`assert_local=${browserToken}`)) {
+    if (!cookies?.includes(browserCookie)) {
       return reply.code(401).send('This Assert Local session is not available.')
     }
 
@@ -215,6 +222,8 @@ export async function startLocalServer(options: LocalServerOptions) {
     throw new Error('Could not determine the local server address')
   }
   localOrigin = `http://127.0.0.1:${address.port}`
+  // Cookies are shared across ports, unlike browser storage.
+  browserCookie = `assert.local.${address.port}=${browserToken}`
 
   const warmPullRequests = async (signal: AbortSignal) => {
     const response = await api.request('/api/workspaces/pull-requests/warm', {

@@ -75,7 +75,7 @@ describe('local server', () => {
     const launch = await fetch(local.launchUrl, { redirect: 'manual' })
     expect(launch.status).toBe(302)
     const cookie = launch.headers.get('set-cookie')?.split(';')[0]
-    expect(cookie).toMatch(/^assert_local=/)
+    expect(cookie).toMatch(/^assert\.local\.\d+=/)
     expect(launch.headers.get('location')).toBe('/local/inbox')
 
     const html = await fetch(local.origin, {
@@ -122,6 +122,54 @@ describe('local server', () => {
       '/api/test?page=2&state=open',
       '/api/test?page=2&state=open',
     ])
+  })
+
+  it('keeps simultaneous inbox and direct-PR sessions authorized in a shared cookie jar', async () => {
+    const configuration = {
+      webUrl: 'https://app.assert.dev',
+      apiUrl: 'https://api.assert.dev',
+    }
+    const first = await startLocalServer({
+      configuration,
+      session,
+      repository: { owner: 'owner', repo: 'first' },
+      refreshSession: async () => session,
+      warmIntervalMs: false,
+    })
+    closers.push(first.close)
+    const second = await startLocalServer({
+      configuration,
+      session,
+      repository: { owner: 'owner', repo: 'second' },
+      pullNumber: 123,
+      refreshSession: async () => session,
+      warmIntervalMs: false,
+    })
+    closers.push(second.close)
+
+    const cookies = new Map<string, string>()
+    for (const [local, expectedPath] of [
+      [first, '/local/inbox'],
+      [second, '/review/github/owner/second/123'],
+    ] as const) {
+      const launch = await fetch(local.launchUrl, { redirect: 'manual' })
+      expect(launch.headers.get('location')).toBe(expectedPath)
+      const cookie = launch.headers.get('set-cookie')!.split(';')[0]!
+      cookies.set(cookie.split('=')[0]!, cookie)
+    }
+    expect(cookies.size).toBe(2)
+    const cookie = [...cookies.values()].join('; ')
+    for (const local of [first, second]) {
+      const health = await fetch(`${local.origin}/__assert-local/health`, {
+        headers: { cookie },
+      })
+      expect(health.status).toBe(204)
+    }
+    const secondCookie = [...cookies.values()][1]!
+    const unauthorized = await fetch(`${first.origin}/__assert-local/health`, {
+      headers: { cookie: secondCookie },
+    })
+    expect(unauthorized.status).toBe(401)
   })
 
   it('warms the repository inbox while the proxy is running', async () => {
