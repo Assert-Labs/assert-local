@@ -86,17 +86,12 @@ async function ensureGh() {
 export async function reviewCommand(options: { open: boolean }) {
   const configuration = getConfiguration()
   console.log(`
-Assert Local — AI-powered pull request review
-https://assert.dev
+Assert Local — Move fast, don't break things
 
-Review code in your browser with a personal PR inbox and AI-assisted diffs.
+Review code in your browser the full power of Assert's AI-assisted diffs.
 This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
-No GitHub App installation or manually copied personal access token is required.
-The UI runs through a local proxy; Assert’s hosted service handles review processing.
 
 You’ll need an Assert account linked to GitHub.
-Assert app: ${configuration.webUrl}
-Assert API: ${configuration.apiUrl}
 `)
   if (!(await ensureGh())) return
 

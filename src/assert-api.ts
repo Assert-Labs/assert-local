@@ -68,26 +68,24 @@ export async function exchangeGithubToken(
       )
     }
     throw new Error(
-      `Assert sign-in at ${configuration.apiUrl} returned HTTP 404. This server may not support Assert Local yet. Check ASSERT_API_URL and that the token-exchange endpoint is deployed.`,
+      'Assert sign-in is currently unavailable (HTTP 404). This may be a service issue or an outdated CLI. Try again later, or update with `npx assert-local@latest review`. If it continues, contact support@assert.dev.',
     )
   }
   if (!response.ok) {
     await response.body?.cancel()
     const hint =
       response.status >= 300 && response.status < 400
-        ? 'The API redirected the request. Check ASSERT_API_URL and any access gateway; use the API origin, not the website.'
+        ? 'Sign-in was unexpectedly redirected. If your network requires a browser login, complete it and try again. If it continues, contact support@assert.dev.'
         : response.status === 401
-          ? 'Authentication was rejected. Check the active account with `gh auth status` and any API access restrictions.'
+          ? 'Your GitHub sign-in was not accepted. Run `gh auth status` and make sure you are using the GitHub account linked to Assert. If you need to sign in again, run `gh auth login`.'
           : response.status === 403
-            ? 'Access was denied. Check the API access restrictions and your GitHub account permissions.'
+            ? 'Access was denied. Make sure your GitHub account has access to Assert. If it continues, contact support@assert.dev.'
             : response.status === 409
-              ? 'The GitHub account could not be matched to a unique Assert account with a personal workspace. Sign in to the Assert app or contact support.'
+              ? 'We could not connect your GitHub account to Assert. Sign in to the Assert app with GitHub. If it continues, contact support@assert.dev.'
               : response.status === 429
-                ? 'The server is rate limiting requests. Wait before trying again.'
-                : 'Check service availability and that the server supports Assert Local, then retry.'
-    throw new Error(
-      `Assert sign-in at ${configuration.apiUrl} returned HTTP ${response.status}. ${hint}`,
-    )
+                ? 'Too many requests were made. Wait a few minutes before trying again.'
+                : 'Assert could not complete sign-in. Try again later. If it continues, contact support@assert.dev.'
+    throw new Error(`Assert sign-in failed (HTTP ${response.status}). ${hint}`)
   }
   try {
     const session = (await response.json()) as AssertSession
@@ -106,7 +104,7 @@ export async function exchangeGithubToken(
     return session
   } catch {
     throw new Error(
-      `Assert sign-in at ${configuration.apiUrl} returned an invalid response (HTTP ${response.status}). Check ASSERT_API_URL points to an API server that supports Assert Local, not a website or sign-in gateway.`,
+      `Assert sign-in returned an unexpected response (HTTP ${response.status}). Try again, or update with \`npx assert-local@latest review\`. If it continues, contact support@assert.dev.`,
     )
   }
 }
@@ -167,7 +165,7 @@ export function createAssertClient(
         return fetchWithDiagnostics(
           url,
           { ...init, headers, signal, redirect: 'manual' },
-          'Assert API request',
+          'Connecting to Assert',
         )
       }
       const token = session.token

@@ -1,38 +1,38 @@
 const networkErrors: Record<string, string> = {
   ENOTFOUND:
-    'DNS could not resolve the hostname. Check the URL and your DNS or VPN connection.',
+    'Your device could not find Assert’s server (DNS lookup failed). Check your internet or VPN connection and try again.',
   EAI_AGAIN:
-    'DNS lookup temporarily failed. Check your DNS or VPN connection and retry.',
+    'Your device temporarily could not find Assert’s server (DNS lookup failed). Check your internet or VPN connection and try again.',
   ECONNREFUSED:
-    'The connection was refused. Check that the service is running at this host and port.',
+    'The connection was refused. Assert may be unavailable, or your network may be blocking it. Try again later; if it continues, contact support@assert.dev.',
   ECONNRESET:
-    'The connection was reset. Check your network, VPN, or proxy and retry.',
+    'The connection was interrupted. Check your internet or VPN connection and try again.',
   ENETUNREACH:
-    'The network is unreachable. Check your network or VPN connection.',
+    'The network is unreachable. Check your internet or VPN connection and try again.',
   EHOSTUNREACH:
-    'The host is unreachable. Check your network or VPN connection.',
+    'Assert could not be reached. Check your internet or VPN connection and try again.',
   ETIMEDOUT:
-    'The connection timed out. Check the URL, network, VPN, or firewall and retry.',
+    'The connection timed out. Check your internet or VPN connection and try again. If it continues, contact support@assert.dev.',
   UND_ERR_CONNECT_TIMEOUT:
-    'The connection timed out. Check the URL, network, VPN, or firewall and retry.',
+    'The connection timed out. Check your internet or VPN connection and try again. If it continues, contact support@assert.dev.',
   UND_ERR_HEADERS_TIMEOUT:
-    'The server took too long to respond. Retry or check service availability.',
+    'Assert took too long to respond. Try again later. If it continues, contact support@assert.dev.',
   UND_ERR_BODY_TIMEOUT:
-    'The server stopped sending data. Retry or check service availability.',
+    'The connection stopped receiving data. Check your internet connection and try again.',
   UND_ERR_SOCKET:
-    'The connection closed unexpectedly. Check your network or proxy and retry.',
+    'The connection closed unexpectedly. Check your internet or VPN connection and try again.',
   CERT_HAS_EXPIRED:
-    'The TLS certificate has expired. Check the server certificate and your system clock.',
+    'The security certificate has expired. Check your device’s date and time. If they are correct, contact support@assert.dev.',
   ERR_TLS_CERT_ALTNAME_INVALID:
-    'The TLS certificate does not match the hostname. Check the configured URL.',
+    'The security certificate does not match the service. We stopped the connection to protect your account. Contact support@assert.dev.',
   DEPTH_ZERO_SELF_SIGNED_CERT:
-    'The TLS certificate is self-signed. Configure a trusted certificate or your organization’s CA.',
+    'The security certificate is self-signed, so we could not verify the connection. On a managed network, ask your IT team for help; otherwise contact support@assert.dev.',
   SELF_SIGNED_CERT_IN_CHAIN:
-    'The TLS certificate chain contains an untrusted certificate. Check your organization’s proxy or CA configuration.',
+    'The connection includes an untrusted security certificate. On a managed network, ask your IT team for help; otherwise contact support@assert.dev.',
   UNABLE_TO_VERIFY_LEAF_SIGNATURE:
-    'The TLS certificate chain could not be verified. Check the server certificate chain or your organization’s CA configuration.',
+    'The security certificate could not be verified. On a managed network, ask your IT team for help; otherwise contact support@assert.dev.',
   UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
-    'The TLS certificate issuer is not trusted. Check the server certificate chain or your organization’s CA configuration.',
+    'Your device does not trust the security certificate’s issuer. On a managed network, ask your IT team for help; otherwise contact support@assert.dev.',
 }
 
 function networkErrorCodes(error: unknown, depth = 0): string[] {
@@ -66,11 +66,11 @@ export async function fetchWithDiagnostics(
     const codes = [...new Set(networkErrorCodes(error))]
     const detail =
       init.signal?.reason?.name === 'TimeoutError'
-        ? 'The request timed out. Retry or check service availability.'
+        ? 'The request timed out. Check your internet connection and try again. If it continues, contact support@assert.dev.'
         : codes.length > 0
           ? codes.map((code) => `${code}: ${networkErrors[code]}`).join(' ')
-          : 'The network request failed. Check the URL, network, VPN, proxy, and TLS configuration.'
+          : 'We could not connect to Assert. Check your internet or VPN connection and try again. If it continues, contact support@assert.dev.'
     // Raw fetch errors can contain credentials, request URLs, or proxy details.
-    throw new Error(`${operation} at ${url.origin} failed. ${detail}`)
+    throw new Error(`${operation} failed. ${detail}`)
   }
 }

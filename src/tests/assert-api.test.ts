@@ -53,7 +53,7 @@ describe('token exchange', () => {
       expect(error).toBeInstanceOf(Error)
       expect((error as Error).message).toContain('HTTP 404')
       expect((error as Error).message).toContain(
-        'token-exchange endpoint is deployed',
+        'This may be a service issue or an outdated CLI',
       )
     },
   )
@@ -70,7 +70,7 @@ describe('token exchange', () => {
     await expect(
       exchangeGithubToken(configuration, 'test-token'),
     ).rejects.toThrow(
-      `Assert sign-in at ${configuration.apiUrl} returned HTTP 403. Access was denied. Check the API access restrictions and your GitHub account permissions.`,
+      'Assert sign-in failed (HTTP 403). Access was denied. Make sure your GitHub account has access to Assert. If it continues, contact support@assert.dev.',
     )
   })
 
@@ -84,7 +84,7 @@ describe('token exchange', () => {
     vi.stubGlobal('fetch', fetch)
     await expect(
       exchangeGithubToken(configuration, 'test-token'),
-    ).rejects.toThrow('API redirected')
+    ).rejects.toThrow('Sign-in was unexpectedly redirected')
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch.mock.calls[0]?.[1].redirect).toBe('manual')
   })
@@ -95,7 +95,7 @@ describe('token exchange', () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body)))
       await expect(
         exchangeGithubToken(configuration, 'test-token'),
-      ).rejects.toThrow('invalid response (HTTP 200)')
+      ).rejects.toThrow('unexpected response (HTTP 200)')
     },
   )
 

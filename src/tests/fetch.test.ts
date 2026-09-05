@@ -5,10 +5,10 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('fetch diagnostics', () => {
   it.each([
-    ['ENOTFOUND', 'DNS could not resolve'],
+    ['ENOTFOUND', 'DNS lookup failed'],
     ['ECONNREFUSED', 'connection was refused'],
     ['UND_ERR_CONNECT_TIMEOUT', 'connection timed out'],
-    ['ERR_TLS_CERT_ALTNAME_INVALID', 'TLS certificate does not match'],
+    ['ERR_TLS_CERT_ALTNAME_INVALID', 'security certificate does not match'],
   ])(
     'explains a nested %s failure without exposing request details',
     async (code, explanation) => {
@@ -26,12 +26,12 @@ describe('fetch diagnostics', () => {
       ).catch((error: unknown) => error)
       expect(error).toBeInstanceOf(Error)
       const message = (error as Error).message
-      expect(message).toContain(
-        'Assert sign-in at https://api.example.com failed.',
-      )
+      expect(message).toContain('Assert sign-in failed.')
       expect(message).toContain(`${code}:`)
       expect(message).toContain(explanation)
-      expect(message).not.toMatch(/password|private|secret|user:/)
+      expect(message).not.toMatch(
+        /password|private|secret|user:|api\.example\.com/,
+      )
       expect((error as Error).cause).toBeUndefined()
     },
   )
@@ -97,7 +97,7 @@ describe('fetch diagnostics', () => {
         'Assert sign-in',
       ),
     ).rejects.toThrow(
-      'Assert sign-in at https://api.example.com failed. The network request failed. Check the URL, network, VPN, proxy, and TLS configuration.',
+      'Assert sign-in failed. We could not connect to Assert. Check your internet or VPN connection and try again. If it continues, contact support@assert.dev.',
     )
   })
 })
