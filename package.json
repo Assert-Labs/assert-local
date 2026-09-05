@@ -1,7 +1,14 @@
 {
   "name": "assert-local",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Run Assert locally with your GitHub CLI credentials",
+  "author": "Cal Lavicka <support@assert.dev> (https://assert.dev)",
+  "license": "MIT",
+  "keywords": [
+    "review",
+    "assert"
+  ],
+  "homepage": "https://github.com/Assert-Labs/assert-local",
   "type": "module",
   "bin": {
     "assert-local": "./dist/index.js"
