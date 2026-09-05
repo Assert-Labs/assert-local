@@ -88,7 +88,7 @@ export async function reviewCommand(options: { open: boolean }) {
   console.log(`
 Assert Local — Move fast, don't break things
 
-Review code in your browser the full power of Assert's AI-assisted diffs.
+Review code in your browser using the full power of Assert's AI-assisted diffs.
 This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
 
 You’ll need an Assert account linked to GitHub.
