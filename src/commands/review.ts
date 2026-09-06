@@ -9,6 +9,7 @@ import { getConfiguration, type CliConfiguration } from '../config.js'
 import {
   getGithubUser,
   getGhToken,
+  getRepository,
   isGhAuthenticated,
   isGhInstalled,
   loginGh,
@@ -22,6 +23,7 @@ import {
   rememberRepository,
 } from '../preferences.js'
 import { chooseRepository } from '../repositories.js'
+import { parseReviewTarget } from '../review-target.js'
 import { formatWordmark } from '../wordmark.js'
 async function authenticate(configuration: CliConfiguration) {
   for (;;) {
@@ -84,7 +86,11 @@ async function ensureGh() {
   return isGhAuthenticated()
 }
 
-export async function reviewCommand(options: { open: boolean }) {
+export async function reviewCommand(
+  options: { open: boolean },
+  target?: string,
+) {
+  const reviewTarget = target == null ? undefined : parseReviewTarget(target)
   const configuration = getConfiguration()
   console.log(`
 ${formatWordmark()}
@@ -121,10 +127,12 @@ You’ll need an Assert account linked to GitHub.
     apiUrl: configuration.apiUrl,
     githubUserId: githubUser.id,
   }
-  const repository = await chooseRepository({
-    githubLogin: githubUser.login,
-    recentRepository: await getRecentRepository(repositoryPreference),
-  })
+  const repository = reviewTarget
+    ? await getRepository(reviewTarget.repository)
+    : await chooseRepository({
+        githubLogin: githubUser.login,
+        recentRepository: await getRecentRepository(repositoryPreference),
+      })
   const separator = repository.nameWithOwner.indexOf('/')
   const selectedRepository = {
     owner: repository.nameWithOwner.slice(0, separator),
@@ -143,6 +151,7 @@ You’ll need an Assert account linked to GitHub.
     configuration,
     session,
     repository: selectedRepository,
+    pullNumber: reviewTarget?.pullNumber,
     refreshSession: async (signal) =>
       exchangeGithubToken(configuration, await getGhToken(signal), signal),
     onWarmError: (error) => {
@@ -159,12 +168,27 @@ You’ll need an Assert account linked to GitHub.
       ? 'Press o to reopen the page, or Ctrl+C to stop.'
       : 'Press Ctrl+C to stop.',
   )
-  if (options.open) await open(localServer.launchUrl)
-
   await new Promise<void>((resolve) => {
     let stopping = false
     const input = process.stdin
     const previousRawMode = input.isRaw
+    const warnBrowserFailure = () => {
+      if (stopping) return
+      console.error(
+        `Could not open your browser. The server is still running; open ${localServer.launchUrl} manually.`,
+      )
+    }
+    const openReview = async () => {
+      try {
+        const browser = await open(localServer.launchUrl)
+        browser.once('error', warnBrowserFailure)
+        browser.once('exit', (code) => {
+          if (code != null && code !== 0) warnBrowserFailure()
+        })
+      } catch {
+        warnBrowserFailure()
+      }
+    }
 
     const cleanup = () => {
       process.off('SIGINT', stop)
@@ -188,9 +212,7 @@ You’ll need an Assert account linked to GitHub.
       if (key.ctrl && key.name === 'c') {
         stop()
       } else if (key.name === 'o') {
-        void open(localServer.launchUrl).catch((error: unknown) => {
-          console.error(error instanceof Error ? error.message : String(error))
-        })
+        void openReview()
       }
     }
     process.on('SIGINT', stop)
@@ -201,5 +223,6 @@ You’ll need an Assert account linked to GitHub.
       input.resume()
       input.on('keypress', onKeypress)
     }
+    if (options.open) void openReview()
   })
 }

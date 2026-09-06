@@ -18,6 +18,15 @@ installing the Assert GitHub app.
 npx assert-local review
 ```
 
+To skip the repository picker, pass a repository or a GitHub pull request URL:
+
+```sh
+npx assert-local review owner/repo
+npx assert-local review https://github.com/owner/repo/pull/123
+```
+
+Repositories open their inbox; pull request URLs open that review directly.
+
 The command confirms the active GitHub and Assert identities, resolves the
 current repository or lets you search for another one, and opens a loopback
 web server. The server proxies Assert's production web assets and API without
