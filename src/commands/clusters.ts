@@ -119,16 +119,16 @@ export async function clustersCommand(
         const response = await client!.request(path, { signal })
         if (!response.ok) {
           const body = (await response.json().catch(() => undefined)) as
-            { error?: { code?: string; message?: string } } | undefined
+            { code?: string; message?: string } | undefined
           const hint =
             response.status === 401
-              ? ' Run `gh auth status` and sign in to Assert with the same account.'
+              ? ' Check your sign-in and repository access with `gh auth status`.'
               : response.status === 403
                 ? ' Check your GitHub repository access and Assert account.'
                 : ''
           throw new ClusterCommandError(
-            body?.error?.code ?? `HTTP_${response.status}`,
-            `${body?.error?.code ?? `HTTP_${response.status}`}: ${body?.error?.message ?? 'Could not retrieve clusters.'}${hint}`,
+            body?.code ?? `HTTP_${response.status}`,
+            `${body?.code ?? `HTTP_${response.status}`}: ${body?.message ?? 'Could not retrieve clusters.'}${hint}`,
           )
         }
         const parsed = ClustersResponse.safeParse(await response.json())
