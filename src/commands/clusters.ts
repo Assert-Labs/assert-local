@@ -112,7 +112,7 @@ export async function clustersCommand(
     const exchange = async (signal?: AbortSignal) =>
       exchangeGithubToken(configuration, await getGhToken(signal), signal)
     client = createAssertClient(configuration, await exchange(), exchange)
-    const path = `/api/v1/github/${repository}/pulls/${pullNumber}/clusters`
+    const path = `/api/v1/pulls/github/${repository}/${pullNumber}/clusters`
     const retryCommand = `assert-local ${clusterId == null ? 'clusters' : `cluster '${clusterId.replaceAll("'", "'\\''")}'`} --repo ${repository} --pr ${pullNumber}`
     const { result, timedOut } = await pollClusters(
       async (signal) => {
