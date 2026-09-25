@@ -64,3 +64,57 @@ Sessions refresh shortly before expiry or once after a 401. Refresh must preserv
 the GitHub identity, Assert identity, and workspace selected at startup. Tokens
 stay in process memory and are never forwarded to the web-asset origin or exposed
 in the browser's runtime configuration.
+
+## Clusters for agents
+
+Discover logical review areas and inspect their changes without starting a local
+web server. These commands use the active `gh` credentials and require an Assert
+account linked to that GitHub account. They never prompt or open a browser.
+
+```sh
+npx assert-local clusters
+npx assert-local clusters --repo example/project --pr 123
+npx assert-local clusters https://github.com/example/project/pull/123
+npx assert-local cluster error-handling --diff
+npx assert-local cluster error-handling --repo example/project --pr 123 --json
+```
+
+Without a target, the current repository and current branch's PR are resolved
+through `gh`. A different repository requires a PR number. Cluster IDs are exact
+IDs from the latest `clusters` result; they may change after new commits or
+regeneration. Each result includes base/head SHAs, the PR review version, and a
+version-pinned Assert link. Add `--diff` to fetch that exact comparison through
+`gh` and show only the selected cluster's changes, including its descendants.
+Diffs are review excerpts with original line coordinates, not necessarily
+standalone patches to apply. Binary and rename metadata are preserved. GitHub
+may reject very large comparisons; the CLI reports that failure instead of
+fetching a newer PR diff.
+
+Commands wait up to 60 seconds for usable results. Partial results can be used
+while smaller subclusters are still generating.
+
+```sh
+npx assert-local clusters --timeout 2m --wait-until ready
+npx assert-local clusters --no-wait --json
+```
+
+`--timeout` accepts seconds (also the default unit), `ms`, or `m` and bounds the
+clustering polling phase. Authentication/PR lookup and optional diff fetching
+have their own request timeouts. `--no-wait` requests status once.
+
+Exit codes: **0** for a successful result (including a pending `--no-wait`
+response), **1** for an error, **2** when the wait timeout expires. A timeout
+returns the last known status and available results, a retry command, and the
+review URL when known. Server generation continues after the CLI stops waiting.
+If the first request times out, status is explicitly `unknown`.
+
+`--json` emits one JSON value on stdout, including structured errors. List output
+contains the full cluster tree; detail output contains the selected `cluster`,
+`clusterUrl`, and optional `diff`. No credentials are printed or saved.
+
+For local development, point the CLI at your development origins:
+
+```sh
+ASSERT_API_URL=http://localhost:8000 ASSERT_WEB_URL=http://localhost:3000 \
+  pnpm dev clusters --repo example/project --pr 123
+```
