@@ -44,27 +44,6 @@ or Assert credentials there. Repository search filters repositories already
 available to your GitHub account locally; exact lookups and broader public
 searches each make a single explicit GitHub request.
 
-## Development
-
-```sh
-pnpm install
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-```
-
-`src/commands/review.ts` owns the interactive setup and terminal lifecycle.
-`src/assert-api.ts` owns session exchange, refresh, and authenticated API requests;
-the proxy and background polling share this client. `src/local-server.ts` serves
-the browser and injects runtime configuration, while `src/poll.ts` runs cancellable,
-non-overlapping background work. UI assets remain hosted by Assert.
-
-Sessions refresh shortly before expiry or once after a 401. Refresh must preserve
-the GitHub identity, Assert identity, and workspace selected at startup. Tokens
-stay in process memory and are never forwarded to the web-asset origin or exposed
-in the browser's runtime configuration.
-
 ## Clusters for agents
 
 Discover logical review areas and inspect their changes without starting a local
@@ -111,10 +90,3 @@ If the first request times out, status is explicitly `unknown`.
 `--json` emits one JSON value on stdout, including structured errors. List output
 contains the full cluster tree; detail output contains the selected `cluster`,
 `clusterUrl`, and optional `diff`. No credentials are printed or saved.
-
-For local development, point the CLI at your development origins:
-
-```sh
-ASSERT_API_URL=http://localhost:8000 ASSERT_WEB_URL=http://localhost:3000 \
-  pnpm dev clusters --repo example/project --pr 123
-```
