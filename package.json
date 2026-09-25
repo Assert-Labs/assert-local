@@ -1,6 +1,6 @@
 {
   "name": "assert-local",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run Assert locally with your GitHub CLI credentials",
   "author": "Cal Lavicka <support@assert.dev> (https://assert.dev)",
   "license": "MIT",
