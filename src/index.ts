@@ -9,7 +9,7 @@ const { version } = createRequire(import.meta.url)('../package.json') as {
 
 const program = new Command()
   .name('assert-local')
-  .description('Run Assert locally with your GitHub CLI credentials')
+  .description('Review pull requests and explore their changes with Assert')
   .addHelpText(
     'after',
     "\nMove fast, don't break things\nGet started: assert-local review",
@@ -60,7 +60,7 @@ for (const name of ['clusters', 'cluster']) {
   else
     command
       .argument('<cluster-id>', 'exact cluster ID from clusters output')
-      .option('--diff', 'include this cluster’s diff, fetched using gh')
+      .option('--diff', 'show changes in this cluster and its subclusters')
       .action((id, options) => clustersCommand(options, undefined, id))
 }
 
