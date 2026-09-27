@@ -48,6 +48,19 @@ npx assert-local cluster error-handling --diff
 npx assert-local cluster error-handling --repo example/project --pr 123 --json
 ```
 
+`clusters` shows the first level of the review tree, with titles, descriptions,
+explicit IDs, file counts, and review links. Use `--depth 2` to expand another
+level or `--depth all` to show the complete tree. File paths are omitted from the
+list to keep large reviews readable.
+
+`cluster <id>` shows a review summary with line-change totals, the five largest
+changed files, its parent, and immediate subclusters. Use `--files` to list every
+changed file. If line-change stats are unavailable, the summary still includes
+the cluster description, file count, and review link.
+
+`cluster <id> --diff` prints only the diff on stdout; errors and wait-status
+messages go to stderr. With `--json`, the diff remains a field in the JSON result.
+
 Without a target, commands use the current repository and current branch's PR.
 A different repository requires a PR number. Cluster IDs are exact
 IDs from the latest `clusters` result; they may change after new commits or
@@ -79,4 +92,6 @@ If the first request times out, status is explicitly `unknown`.
 
 `--json` emits one JSON value on stdout, including structured errors. List output
 contains the full cluster tree; detail output contains the selected `cluster`,
-`clusterUrl`, and optional `diff`. No credentials are printed or saved.
+`clusterUrl`, line-change `stats` when available, and optional `diff`. Text
+limits such as `--depth` and the five-file preview do not truncate JSON output.
+No credentials are printed or saved.

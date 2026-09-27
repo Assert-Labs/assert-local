@@ -8,9 +8,17 @@ import {
   clusterLeaves,
   clusterUrl,
   findCluster,
-  formatCluster,
 } from '../clusters.js'
-import { sliceClusterDiff } from '../cluster-diff.js'
+import {
+  sliceClusterDiff,
+  clusterDiffStats,
+  type ClusterDiffStats,
+} from '../cluster-diff.js'
+import {
+  findParentCluster,
+  formatClusterDetail,
+  formatClusterList,
+} from '../cluster-format.js'
 import { pollClusters } from '../cluster-poll.js'
 
 class ClusterCommandError extends Error {
@@ -30,6 +38,8 @@ export interface ClusterOptions {
   wait: boolean
   waitUntil: string
   diff?: boolean
+  depth?: string
+  files?: boolean
 }
 
 export function parseTimeout(value: string) {
@@ -105,6 +115,10 @@ export async function clustersCommand(
   let client: ReturnType<typeof createAssertClient> | undefined
   try {
     const timeoutMs = parseTimeout(options.timeout)
+    const depth =
+      options.depth === 'all' ? Infinity : Number(options.depth ?? '1')
+    if (options.depth !== 'all' && (!Number.isSafeInteger(depth) || depth < 0))
+      throw new Error('--depth must be a non-negative integer or all.')
     if (options.waitUntil !== 'usable' && options.waitUntil !== 'ready')
       throw new Error('--wait-until must be usable or ready.')
     const { repository, pullNumber } = await resolveTarget(target, options)
@@ -155,19 +169,35 @@ export async function clustersCommand(
         `Cluster ${JSON.stringify(clusterId)} was not found in the latest clustering. Run \`assert-local clusters --repo ${repository} --pr ${pullNumber}\` to list current IDs.`,
       )
     let diff: string | undefined
-    if (options.diff && selected != null && result != null) {
-      const comparison = await execa(
-        'gh',
-        [
-          'api',
-          `repos/${repository}/compare/${result.baseSha}...${result.headSha}`,
-          '-H',
-          'Accept: application/vnd.github.diff',
-        ],
-        { timeout: 60_000, maxBuffer: 50 * 1024 * 1024 },
-      )
-      diff = sliceClusterDiff(comparison.stdout, clusterLeaves(selected))
+    let stats: ClusterDiffStats | undefined
+    let statsError: string | undefined
+    if (selected != null && result != null) {
+      try {
+        const comparison = await execa(
+          'gh',
+          [
+            'api',
+            `repos/${repository}/compare/${result.baseSha}...${result.headSha}`,
+            '-H',
+            'Accept: application/vnd.github.diff',
+          ],
+          { timeout: 60_000, maxBuffer: 50 * 1024 * 1024 },
+        )
+        const sliced = sliceClusterDiff(
+          comparison.stdout,
+          clusterLeaves(selected),
+        )
+        stats = clusterDiffStats(sliced)
+        if (options.diff) diff = sliced
+      } catch (error) {
+        if (options.diff) throw error
+        statsError = error instanceof Error ? error.message : String(error)
+      }
     }
+    const parent =
+      selected != null && result != null && result.status !== 'pending'
+        ? findParentCluster(result.tree, selected.id)
+        : undefined
     const message = timedOut
       ? result == null
         ? 'Timed out before receiving clustering status. Generation status is unknown.'
@@ -192,20 +222,41 @@ export async function clustersCommand(
             cluster: selected,
             clusterUrl: clusterUrl(result!.reviewUrl, selected.id),
           }),
+      ...(stats == null ? {} : { stats }),
+      ...(statsError == null ? {} : { statsError }),
+      ...(parent == null
+        ? {}
+        : { parent: { id: parent.id, title: parent.title } }),
       ...(diff == null ? {} : { diff }),
     }
     if (options.json) console.log(JSON.stringify(output, null, 2))
-    else {
+    else if (options.diff) {
+      if (diff != null) process.stdout.write(diff)
+      if (message != null) console.error(message)
+      if (timedOut || selected == null) console.error(`Retry: ${retryCommand}`)
+    } else {
       if (message != null) console.log(message)
       if (result != null) {
         console.log(
-          `${repository}#${pullNumber} — ${result.status}\n${result.reviewUrl}`,
+          `${repository}#${pullNumber} · ${result.status} · Version ${result.version}\n`,
         )
-        if (result.status !== 'pending')
-          console.log(formatCluster(selected ?? result.tree, result.reviewUrl))
+        if (selected != null) {
+          console.log(
+            formatClusterDetail(selected, result.reviewUrl, {
+              stats,
+              statsError,
+              parent,
+              allFiles: options.files,
+            }),
+          )
+        } else if (result.status !== 'pending' && clusterId == null) {
+          console.log(formatClusterList(result.tree, result.reviewUrl, depth))
+          if (depth !== Infinity)
+            console.log(
+              `\nInspect a cluster with: assert-local cluster <id> --repo ${repository} --pr ${pullNumber}\nExpand the tree with: assert-local clusters --repo ${repository} --pr ${pullNumber} --depth all`,
+            )
+        } else console.log(`Review: ${result.reviewUrl}`)
       }
-      if (diff != null)
-        console.log(`\n${diff || '(No textual changes in this cluster.)'}`)
       if (
         timedOut ||
         result?.status === 'pending' ||

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { sliceClusterDiff } from '../cluster-diff.js'
+import { clusterDiffStats, sliceClusterDiff } from '../cluster-diff.js'
 import type { ClusterLeaf } from '../clusters.js'
 
 const range = (
@@ -117,4 +117,64 @@ new file mode 100644
   ])
   expect(sliced).toContain('+replacement')
   expect(sliced).not.toContain('rename to new.ts')
+})
+
+it('counts selected changes once without counting context or patch headers', () => {
+  const sliced = sliceClusterDiff(diff, [range(2, 1, 2, 1), range(2, 1, 2, 1)])
+  expect(clusterDiffStats(sliced)).toEqual({
+    additions: 1,
+    deletions: 1,
+    files: [
+      {
+        fileName: 'src/example.ts',
+        additions: 1,
+        deletions: 1,
+        binary: false,
+        renamed: false,
+      },
+    ],
+  })
+})
+
+it('counts content resembling file headers as changed lines', () => {
+  const patch = `diff --git a/example.txt b/example.txt
+--- a/example.txt
++++ b/example.txt
+@@ -1,2 +1,3 @@
+--- old content
++++ new content
++another line
+ unchanged
+`
+  expect(clusterDiffStats(patch)).toMatchObject({ additions: 2, deletions: 1 })
+})
+
+it('reports binary and rename-only files without inventing line counts', () => {
+  const patch = `diff --git a/old.png b/new.png
+similarity index 100%
+rename from old.png
+rename to new.png
+diff --git a/image.png b/image.png
+Binary files a/image.png and b/image.png differ
+`
+  expect(clusterDiffStats(patch)).toEqual({
+    additions: 0,
+    deletions: 0,
+    files: [
+      {
+        fileName: 'new.png',
+        additions: 0,
+        deletions: 0,
+        binary: false,
+        renamed: true,
+      },
+      {
+        fileName: 'image.png',
+        additions: 0,
+        deletions: 0,
+        binary: true,
+        renamed: false,
+      },
+    ],
+  })
 })

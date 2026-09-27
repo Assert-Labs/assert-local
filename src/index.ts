@@ -56,11 +56,16 @@ for (const name of ['clusters', 'cluster']) {
   if (name === 'clusters')
     command
       .argument('[pr-url]', 'GitHub pull request URL')
+      .option('--depth <levels>', 'levels of subclusters to show, or all', '1')
       .action((target, options) => clustersCommand(options, target))
   else
     command
       .argument('<cluster-id>', 'exact cluster ID from clusters output')
-      .option('--diff', 'show changes in this cluster and its subclusters')
+      .option(
+        '--diff',
+        'output only the diff for this cluster and its subclusters',
+      )
+      .option('--files', 'list every changed file in the cluster summary')
       .action((id, options) => clustersCommand(options, undefined, id))
 }
 

@@ -70,22 +70,3 @@ export function clusterUrl(reviewUrl: string, id: string) {
   url.searchParams.set('cluster', id)
   return url.toString()
 }
-
-export function formatCluster(
-  tree: ClusterGroup,
-  reviewUrl: string,
-  depth = 0,
-): string {
-  const leaves = clusterLeaves(tree)
-  const files = [...new Set(leaves.map((leaf) => leaf.fileName))]
-  const prefix = '  '.repeat(depth)
-  return [
-    `${prefix}${tree.id}: ${tree.title}${tree.pendingSubclustering ? ' (subdividing)' : ''}`,
-    `${prefix}${tree.description}`,
-    `${prefix}Files: ${files.join(', ') || '(none)'}`,
-    `${prefix}${clusterUrl(reviewUrl, tree.id)}`,
-    ...tree.children
-      .filter((child) => child.kind === 'group')
-      .map((child) => formatCluster(child, reviewUrl, depth + 1)),
-  ].join('\n')
-}

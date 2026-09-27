@@ -138,3 +138,52 @@ export function sliceClusterDiff(diff: string, leaves: ClusterLeaf[]) {
     )
   return output.join('\n') + (output.length > 0 ? '\n' : '')
 }
+
+export interface ClusterDiffStats {
+  additions: number
+  deletions: number
+  files: {
+    fileName: string
+    additions: number
+    deletions: number
+    binary: boolean
+    renamed: boolean
+  }[]
+}
+
+/** Count only actual changed lines in the already-sliced cluster diff. */
+export function clusterDiffStats(diff: string): ClusterDiffStats {
+  const files: ClusterDiffStats['files'] = []
+  for (const section of diff.split(/(?=^diff --git )/m)) {
+    if (!section.startsWith('diff --git ')) continue
+    const lines = section.split('\n')
+    const firstHunk = lines.findIndex((line) => line.startsWith('@@ '))
+    const header = firstHunk < 0 ? lines : lines.slice(0, firstHunk)
+    const name = fileName(header)
+    if (name == null)
+      throw new Error('Could not identify a file in the cluster diff.')
+    let additions = 0
+    let deletions = 0
+    if (firstHunk >= 0) {
+      for (const line of lines.slice(firstHunk)) {
+        if (line.startsWith('+')) additions++
+        if (line.startsWith('-')) deletions++
+      }
+    }
+    files.push({
+      fileName: name,
+      additions,
+      deletions,
+      binary: header.some(
+        (line) =>
+          line.startsWith('Binary files ') || line === 'GIT binary patch',
+      ),
+      renamed: header.some((line) => line.startsWith('rename to ')),
+    })
+  }
+  return {
+    files,
+    additions: files.reduce((sum, file) => sum + file.additions, 0),
+    deletions: files.reduce((sum, file) => sum + file.deletions, 0),
+  }
+}
