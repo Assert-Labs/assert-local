@@ -10,13 +10,11 @@ vi.mock('open', () => ({ default: vi.fn() }))
 vi.mock('../gh.js', () => ({
   isGhInstalled: async () => true,
   isGhAuthenticated: async () => true,
-  getGithubUser: async () => ({ id: 1, login: 'octocat' }),
-  getGhToken: async () => 'test-token',
   getRepository: vi.fn(async () => ({ nameWithOwner: 'Owner/Repo' })),
 }))
-vi.mock('../assert-api.js', () => ({
-  exchangeGithubToken: async () => ({
-    githubUser: { id: '1' },
+vi.mock('../auth.js', () => ({
+  authenticate: async () => ({
+    githubUser: { id: '1', login: 'octocat' },
     user: { id: 'user', name: 'Test User', email: 'test@example.com' },
   }),
 }))

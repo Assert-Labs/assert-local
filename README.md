@@ -12,6 +12,16 @@ required.
 - [GitHub CLI](https://cli.github.com/), signed in to your GitHub account
 - An Assert account linked to that same GitHub account
 
+## Signing in
+
+```sh
+npx assert-local login
+```
+
+Signs in to Assert in your browser and saves the session in
+`~/.assert-local`. `review` signs in the same way when needed. Use
+`npx assert-local logout` to sign out.
+
 ## Usage
 
 ```sh
@@ -27,8 +37,8 @@ npx assert-local review https://github.com/owner/repo/pull/123
 
 Repositories open their inbox; pull request URLs open that review directly.
 
-The command confirms your account, lets you choose a repository, and opens the
-review in your browser. It remembers your account confirmation and most recent
+The command signs you in if needed, confirms your account, lets you choose a
+repository, and opens the review in your browser. It remembers your account confirmation and most recent
 repository, and keeps the repository inbox up to date while running.
 
 Use `--no-open` to print the review URL without opening a browser.
@@ -38,7 +48,7 @@ Press `o` to reopen the page or Ctrl+C to stop.
 
 Discover logical review areas, inspect their changes, and get links to share
 with reviewers. These commands print their results without prompting or opening
-a browser.
+a browser, so run `assert-local login` first.
 
 ```sh
 npx assert-local clusters
@@ -94,4 +104,4 @@ If the first request times out, status is explicitly `unknown`.
 contains the full cluster tree; detail output contains the selected `cluster`,
 `clusterUrl`, line-change `stats` when available, and optional `diff`. Text
 limits such as `--depth` and the five-file preview do not truncate JSON output.
-No credentials are printed or saved.
+No credentials are printed.

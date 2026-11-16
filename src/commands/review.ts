@@ -2,13 +2,12 @@ import { confirm, select } from '@inquirer/prompts'
 import { emitKeypressEvents } from 'node:readline'
 import open from 'open'
 import {
-  AssertAccountNotFoundError,
-  exchangeGithubToken,
+  GithubAccountMismatchError,
+  type AssertSession,
 } from '../assert-api.js'
+import { authenticate } from '../auth.js'
 import { getConfiguration, type CliConfiguration } from '../config.js'
 import {
-  getGithubUser,
-  getGhToken,
   getRepository,
   isGhAuthenticated,
   isGhInstalled,
@@ -25,28 +24,18 @@ import {
 import { chooseRepository } from '../repositories.js'
 import { parseReviewTarget } from '../review-target.js'
 import { formatWordmark } from '../wordmark.js'
-async function authenticate(configuration: CliConfiguration) {
-  for (;;) {
-    const githubUser = await getGithubUser()
-    const githubToken = await getGhToken()
-    try {
-      const session = await exchangeGithubToken(configuration, githubToken)
-      if (session.githubUser.id !== String(githubUser.id)) {
-        throw new Error(
-          'The active gh account changed during setup. Run `assert-local review` again.',
-        )
-      }
-      return { githubUser, session }
-    } catch (error) {
-      if (!(error instanceof AssertAccountNotFoundError)) throw error
 
+async function authenticateInteractively(
+  configuration: CliConfiguration,
+): Promise<AssertSession | undefined> {
+  for (;;) {
+    try {
+      return await authenticate({ configuration, interactive: true })
+    } catch (error) {
+      if (!(error instanceof GithubAccountMismatchError)) throw error
       const action = await select({
-        message: `GitHub @${githubUser.login} is not linked to an Assert account`,
+        message: error.message,
         choices: [
-          {
-            name: 'Sign up for Assert with GitHub',
-            value: 'signup' as const,
-          },
           {
             name: 'Switch the active gh account',
             value: 'switch' as const,
@@ -54,20 +43,18 @@ async function authenticate(configuration: CliConfiguration) {
           { name: 'Cancel', value: 'cancel' as const },
         ],
       })
-      if (action === 'signup') {
-        await open(new URL('/signup', configuration.webUrl).toString())
+      if (action === 'cancel') {
         console.log(
-          'Sign up with GitHub, then run `assert-local review` again.',
+          'To use a different Assert account, run `assert-local logout`, sign in to that account in your browser, and run `assert-local review` again.',
         )
         return undefined
       }
-      if (action === 'cancel') return undefined
       await switchGhAccount()
     }
   }
 }
 
-async function ensureGh() {
+export async function ensureGh() {
   if (!(await isGhInstalled())) {
     throw new Error(
       'GitHub CLI is required. Install it from https://cli.github.com/ and run this command again.',
@@ -96,22 +83,21 @@ export async function reviewCommand(
 ${formatWordmark()}
 
 Review code in your browser using the full power of Assert's AI-assisted diffs.
-This CLI uses your GitHub CLI account to connect to Assert and choose a repository.
-
-You’ll need an Assert account linked to GitHub.
+This CLI signs in to Assert in your browser and uses your GitHub CLI account to
+choose a repository.
 `)
   if (!(await ensureGh())) return
 
-  const authenticated = await authenticate(configuration)
-  if (authenticated == null) return
-  const { githubUser, session } = authenticated
+  const session = await authenticateInteractively(configuration)
+  if (session == null) return
+  const { githubUser } = session
 
   console.log(
     `\nGitHub: @${githubUser.login}\nAssert: ${session.user.name} <${session.user.email}>`,
   )
   const identity = {
     apiUrl: configuration.apiUrl,
-    githubUserId: githubUser.id,
+    githubUserId: Number(githubUser.id),
     assertUserId: session.user.id,
   }
   if (!(await isIdentityAuthorized(identity))) {
@@ -125,7 +111,7 @@ You’ll need an Assert account linked to GitHub.
 
   const repositoryPreference = {
     apiUrl: configuration.apiUrl,
-    githubUserId: githubUser.id,
+    githubUserId: Number(githubUser.id),
   }
   const repository = reviewTarget
     ? await getRepository(reviewTarget.repository)
@@ -152,8 +138,6 @@ You’ll need an Assert account linked to GitHub.
     session,
     repository: selectedRepository,
     pullNumber: reviewTarget?.pullNumber,
-    refreshSession: async (signal) =>
-      exchangeGithubToken(configuration, await getGhToken(signal), signal),
     onWarmError: (error) => {
       console.error(
         `Assert Local could not warm the inbox and will retry: ${error instanceof Error ? error.message : String(error)}`,
