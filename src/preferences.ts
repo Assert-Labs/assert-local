@@ -14,7 +14,9 @@ const emptyPreferences = (): Preferences => ({
   recentRepositories: {},
 })
 
-function preferencesDirectory(environment: NodeJS.ProcessEnv = process.env) {
+export function preferencesDirectory(
+  environment: NodeJS.ProcessEnv = process.env,
+) {
   return (
     environment.ASSERT_LOCAL_CONFIG_DIR ?? path.join(homedir(), '.assert-local')
   )

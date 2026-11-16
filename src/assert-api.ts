@@ -1,20 +1,19 @@
 import type { CliConfiguration } from './config.js'
 import { fetchWithDiagnostics } from './fetch.js'
 
+export interface AssertUser {
+  id: string
+  name: string
+  email: string
+  image?: string | null
+}
+
 export interface AssertSession {
   token: string
-  expiresAt: string
-  user: {
-    id: string
-    name: string
-    email: string
-    image?: string | null
-  }
+  user: AssertUser
   githubUser: {
     id: string
     login: string
-    name?: string
-    image?: string
   }
   workspace: {
     id: string
@@ -23,124 +22,196 @@ export interface AssertSession {
   }
 }
 
-export class AssertAccountNotFoundError extends Error {}
-
-async function responseMessage(response: Response) {
-  try {
-    const body = (await response.json()) as { message?: unknown }
-    return body != null && typeof body.message === 'string'
-      ? body.message
-      : undefined
-  } catch {
-    return undefined
+export class SessionEndedError extends Error {
+  constructor() {
+    super(
+      'Your Assert session has ended. Run `assert-local login`, then try again.',
+    )
   }
 }
 
-export async function exchangeGithubToken(
-  configuration: CliConfiguration,
-  githubToken: string,
-  signal?: AbortSignal,
-) {
-  const response = await fetchWithDiagnostics(
-    new URL('/api/auth/cli/exchange', configuration.apiUrl),
-    {
-      method: 'POST',
-      headers: {
-        authorization: `token ${githubToken}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ providerId: 'github' }),
-      redirect: 'manual',
-      signal: AbortSignal.any([
-        AbortSignal.timeout(30_000),
-        ...(signal == null ? [] : [signal]),
-      ]),
-    },
-    'Assert sign-in',
-  )
-  if (response.status === 404) {
-    if (
-      (await responseMessage(response)) ===
-      'No Assert account is linked to this GitHub account.'
-    ) {
-      throw new AssertAccountNotFoundError(
-        'No Assert account is linked to this GitHub user.',
-      )
-    }
-    throw new Error(
-      'Assert sign-in is currently unavailable (HTTP 404). This may be a service issue or an outdated CLI. Try again later, or update with `npx assert-local@latest review`. If it continues, contact support@assert.dev.',
+/** The gh account isn't the GitHub account linked to the signed-in Assert user */
+export class GithubAccountMismatchError extends Error {
+  constructor(readonly login: string) {
+    super(
+      `GitHub @${login} is not the GitHub account linked to your Assert account.`,
     )
+  }
+}
+
+const UNEXPECTED_RESPONSE =
+  'Assert returned an unexpected response. Try again, or update with `npx assert-local@latest`. If it continues, contact support@assert.dev.'
+
+function authorizedFetch(
+  configuration: CliConfiguration,
+  token: string,
+  path: string,
+  init: RequestInit,
+  operation: string,
+) {
+  const headers = new Headers(init.headers)
+  headers.set('authorization', `Bearer ${token}`)
+  return fetchWithDiagnostics(
+    new URL(path, configuration.apiUrl),
+    {
+      ...init,
+      headers,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30_000),
+    },
+    operation,
+  )
+}
+
+async function failedResponse(response: Response, operation: string) {
+  await response.body?.cancel()
+  return new Error(
+    `${operation} failed (HTTP ${response.status}). Try again later. If it continues, contact support@assert.dev.`,
+  )
+}
+
+/** The session's user, or undefined when the session has ended */
+export async function getSessionUser(
+  configuration: CliConfiguration,
+  token: string,
+): Promise<AssertUser | undefined> {
+  const response = await authorizedFetch(
+    configuration,
+    token,
+    '/api/auth/get-session',
+    {},
+    'Checking your Assert session',
+  )
+  if (response.status === 401) {
+    await response.body?.cancel()
+    return undefined
   }
   if (!response.ok) {
-    await response.body?.cancel()
-    const hint =
-      response.status >= 300 && response.status < 400
-        ? 'Sign-in was unexpectedly redirected. If your network requires a browser login, complete it and try again. If it continues, contact support@assert.dev.'
-        : response.status === 401
-          ? 'Your GitHub sign-in was not accepted. Run `gh auth status` and make sure you are using the GitHub account linked to Assert. If you need to sign in again, run `gh auth login`.'
-          : response.status === 403
-            ? 'Access was denied. Make sure your GitHub account has access to Assert. If it continues, contact support@assert.dev.'
-            : response.status === 409
-              ? 'We could not connect your GitHub account to Assert. Sign in to the Assert app with GitHub. If it continues, contact support@assert.dev.'
-              : response.status === 429
-                ? 'Too many requests were made. Wait a few minutes before trying again.'
-                : 'Assert could not complete sign-in. Try again later. If it continues, contact support@assert.dev.'
-    throw new Error(`Assert sign-in failed (HTTP ${response.status}). ${hint}`)
+    throw await failedResponse(response, 'Checking your Assert session')
   }
-  try {
-    const session = (await response.json()) as AssertSession
-    if (
-      typeof session?.token !== 'string' ||
-      !session.token ||
-      typeof session.expiresAt !== 'string' ||
-      !Number.isFinite(Date.parse(session.expiresAt)) ||
-      typeof session.user?.id !== 'string' ||
-      typeof session.githubUser?.id !== 'string' ||
-      typeof session.githubUser.login !== 'string' ||
-      typeof session.workspace?.id !== 'string'
-    ) {
-      throw new Error('Invalid session response')
-    }
-    return session
-  } catch {
+  // Better Auth reports an expired or revoked session as 200 with a null body.
+  const body = (await response.json().catch(() => undefined)) as
+    { user?: Partial<AssertUser> } | null | undefined
+  if (body === null) return undefined
+  const user = body?.user
+  if (
+    typeof user?.id !== 'string' ||
+    typeof user.name !== 'string' ||
+    typeof user.email !== 'string'
+  ) {
+    throw new Error(UNEXPECTED_RESPONSE)
+  }
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    image: user.image,
+  }
+}
+
+/** Lets Assert use the GitHub CLI's credential for repositories it can't otherwise reach. */
+export async function attachGithubCredential(
+  configuration: CliConfiguration,
+  token: string,
+  githubToken: string,
+) {
+  const response = await authorizedFetch(
+    configuration,
+    token,
+    '/api/github/session-credential',
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ accessToken: githubToken }),
+    },
+    'Connecting the GitHub CLI',
+  )
+  if (response.status === 401) {
+    await response.body?.cancel()
+    throw new SessionEndedError()
+  }
+  if (!response.ok) {
+    throw await failedResponse(response, 'Connecting the GitHub CLI')
+  }
+  const body = (await response.json().catch(() => undefined)) as
+    { status?: unknown; login?: unknown } | undefined
+  if (body?.status === 'rejected') {
     throw new Error(
-      `Assert sign-in returned an unexpected response (HTTP ${response.status}). Try again, or update with \`npx assert-local@latest review\`. If it continues, contact support@assert.dev.`,
+      'GitHub did not accept your GitHub CLI credentials. Run `gh auth login`, then try again.',
     )
   }
+  if (typeof body?.login !== 'string') throw new Error(UNEXPECTED_RESPONSE)
+  if (body.status === 'account-mismatch') {
+    throw new GithubAccountMismatchError(body.login)
+  }
+  if (body.status !== 'attached') throw new Error(UNEXPECTED_RESPONSE)
+  return { login: body.login }
+}
+
+export async function getPersonalWorkspace(
+  configuration: CliConfiguration,
+  token: string,
+  userId: string,
+) {
+  const response = await authorizedFetch(
+    configuration,
+    token,
+    '/api/auth/organization/list',
+    {},
+    'Loading your Assert workspace',
+  )
+  if (response.status === 401) {
+    await response.body?.cancel()
+    throw new SessionEndedError()
+  }
+  if (!response.ok) {
+    throw await failedResponse(response, 'Loading your Assert workspace')
+  }
+  const workspaces = (await response.json().catch(() => undefined)) as unknown
+  if (!Array.isArray(workspaces)) throw new Error(UNEXPECTED_RESPONSE)
+  const workspace = (
+    workspaces as {
+      id?: unknown
+      name?: unknown
+      slug?: unknown
+      personalOwnerUserId?: unknown
+    }[]
+  ).find((workspace) => workspace?.personalOwnerUserId === userId)
+  if (
+    typeof workspace?.id !== 'string' ||
+    typeof workspace.name !== 'string' ||
+    typeof workspace.slug !== 'string'
+  ) {
+    throw new Error(
+      `Your Assert account has no personal workspace. Open ${configuration.webUrl} once, then try again.`,
+    )
+  }
+  return { id: workspace.id, name: workspace.name, slug: workspace.slug }
+}
+
+export async function revokeSession(
+  configuration: CliConfiguration,
+  token: string,
+) {
+  const response = await authorizedFetch(
+    configuration,
+    token,
+    '/api/auth/sign-out',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    },
+    'Signing out of Assert',
+  )
+  await response.body?.cancel()
 }
 
 export function createAssertClient(
   configuration: CliConfiguration,
-  initialSession: AssertSession,
-  exchange: (signal: AbortSignal) => Promise<AssertSession>,
+  session: AssertSession,
 ) {
-  let session = initialSession
-  let refreshing: Promise<AssertSession> | undefined
   const lifetime = new AbortController()
-
-  async function refresh(rejectedToken = session.token) {
-    lifetime.signal.throwIfAborted()
-    // A late 401 for the previous token must not mint another session.
-    if (session.token !== rejectedToken) return session
-    refreshing ??= exchange(lifetime.signal)
-      .then((next) => {
-        if (
-          next.user.id !== initialSession.user.id ||
-          next.githubUser.id !== initialSession.githubUser.id ||
-          next.workspace.id !== initialSession.workspace.id
-        ) {
-          throw new Error(
-            'The active account or workspace changed. Stop the server and run `assert-local review` again.',
-          )
-        }
-        session = next
-        return next
-      })
-      .finally(() => {
-        refreshing = undefined
-      })
-    return refreshing
-  }
 
   return {
     async request(path: string, init: RequestInit = {}) {
@@ -153,31 +224,33 @@ export function createAssertClient(
           'Assert API requests must stay on the configured API origin',
         )
       }
-      if (Date.parse(session.expiresAt) <= Date.now() + 30_000) await refresh()
       const headers = new Headers(init.headers)
-      const signal = AbortSignal.any([
-        lifetime.signal,
-        AbortSignal.timeout(120_000),
-        ...(init.signal == null ? [] : [init.signal]),
-      ])
-      const send = (token: string) => {
-        headers.set('authorization', `Bearer ${token}`)
-        return fetchWithDiagnostics(
-          url,
-          { ...init, headers, signal, redirect: 'manual' },
-          'Connecting to Assert',
-        )
-      }
-      const token = session.token
-      const response = await send(token)
-      // Better Auth reports an expired or revoked session as 200 with a null body.
-      const missingSession =
-        url.pathname === '/api/auth/get-session' &&
-        response.ok &&
-        (await response.clone().json()) == null
-      if (response.status !== 401 && !missingSession) return response
+      headers.set('authorization', `Bearer ${session.token}`)
+      const response = await fetchWithDiagnostics(
+        url,
+        {
+          ...init,
+          headers,
+          redirect: 'manual',
+          signal: AbortSignal.any([
+            lifetime.signal,
+            AbortSignal.timeout(120_000),
+            ...(init.signal == null ? [] : [init.signal]),
+          ]),
+        },
+        'Connecting to Assert',
+      )
+      const ended =
+        url.pathname === '/api/auth/get-session'
+          ? response.status === 401 ||
+            // Better Auth reports an ended session as 200 with a null body
+            (response.ok && (await response.clone().json()) == null)
+          : response.status === 401 &&
+            // Assert also answers 401 for repositories the user can't access
+            (await getSessionUser(configuration, session.token)) == null
+      if (!ended) return response
       await response.body?.cancel()
-      return send((await refresh(token)).token)
+      throw new SessionEndedError()
     },
     close: () => lifetime.abort(),
   }

@@ -1,7 +1,11 @@
 import crypto from 'node:crypto'
 import type { IncomingHttpHeaders } from 'node:http'
 import Fastify from 'fastify'
-import { createAssertClient, type AssertSession } from './assert-api.js'
+import {
+  createAssertClient,
+  SessionEndedError,
+  type AssertSession,
+} from './assert-api.js'
 import type { CliConfiguration } from './config.js'
 import { startPolling } from './poll.js'
 import { fetchWithDiagnostics } from './fetch.js'
@@ -11,7 +15,6 @@ interface LocalServerOptions {
   session: AssertSession
   repository: { owner: string; repo: string }
   pullNumber?: number
-  refreshSession: (signal: AbortSignal) => Promise<AssertSession>
   warmIntervalMs?: number | false
   onWarmError?: (error: unknown) => void
 }
@@ -79,11 +82,8 @@ function rewriteLocation(
 
 export async function startLocalServer(options: LocalServerOptions) {
   const fastify = Fastify({ logger: false })
-  const api = createAssertClient(
-    options.configuration,
-    options.session,
-    options.refreshSession,
-  )
+  const api = createAssertClient(options.configuration, options.session)
+  let reportedSessionEnd = false
   const lifetime = new AbortController()
   fastify.removeAllContentTypeParsers()
   fastify.addContentTypeParser(
@@ -188,9 +188,19 @@ export async function startLocalServer(options: LocalServerOptions) {
           AbortSignal.timeout(120_000),
         ]),
       }
-      const response = await (isApiRequest
-        ? api.request(path, init)
-        : fetchWithDiagnostics(targetUrl, init, 'Loading the Assert web app'))
+      let response: Response
+      try {
+        response = await (isApiRequest
+          ? api.request(path, init)
+          : fetchWithDiagnostics(targetUrl, init, 'Loading the Assert web app'))
+      } catch (error) {
+        if (!(error instanceof SessionEndedError)) throw error
+        if (!reportedSessionEnd) {
+          reportedSessionEnd = true
+          console.error(error.message)
+        }
+        return reply.code(401).send(error.message)
+      }
 
       reply.code(response.status)
       response.headers.forEach((value, name) => {

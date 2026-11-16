@@ -1,6 +1,7 @@
 import { Command } from 'commander'
 import { createRequire } from 'node:module'
 import { clustersCommand } from './commands/clusters.js'
+import { loginCommand, logoutCommand } from './commands/login.js'
 import { reviewCommand } from './commands/review.js'
 
 const { version } = createRequire(import.meta.url)('../package.json') as {
@@ -24,6 +25,16 @@ program
   .action(async (target: string | undefined, options: { open: boolean }) =>
     reviewCommand(options, target),
   )
+
+program
+  .command('login')
+  .description('Sign in to Assert in your browser')
+  .action(loginCommand)
+
+program
+  .command('logout')
+  .description('Sign out of Assert')
+  .action(logoutCommand)
 
 for (const name of ['clusters', 'cluster']) {
   const command = program

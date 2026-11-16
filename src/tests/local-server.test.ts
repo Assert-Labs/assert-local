@@ -30,14 +30,13 @@ async function listen(
 
 const session: AssertSession = {
   token: 'old-session-token',
-  expiresAt: new Date(Date.now() + 60_000).toISOString(),
   user: { id: 'user-1', name: 'Test User', email: 'test@example.com' },
   githubUser: { id: '1', login: 'octocat' },
   workspace: { id: 'workspace-1', name: 'Test User', slug: '@test-user' },
 }
 
 describe('local server', () => {
-  it('protects the proxy, injects runtime configuration, and refreshes auth', async () => {
+  it('protects the proxy, injects runtime configuration, and reports an ended session', async () => {
     const webHeaders: Array<string | undefined> = []
     const web = await listen((request, response) => {
       webHeaders.push(request.headers.authorization)
@@ -51,7 +50,12 @@ describe('local server', () => {
     const api = await listen((request, response) => {
       receivedTokens.push(request.headers.authorization)
       receivedUrls.push(request.url)
-      if (request.headers.authorization === 'Bearer old-session-token') {
+      if (request.url === '/api/auth/get-session') {
+        response.setHeader('content-type', 'application/json')
+        response.end('null')
+        return
+      }
+      if (request.url === '/api/ended') {
         response.statusCode = 401
         response.end('expired')
         return
@@ -65,7 +69,6 @@ describe('local server', () => {
       configuration: { webUrl: web.origin, apiUrl: api.origin },
       session,
       repository: { owner: 'Assert-Labs', repo: 'assert-local' },
-      refreshSession: async () => ({ ...session, token: 'new-session-token' }),
       warmIntervalMs: false,
     })
     closers.push(local.close)
@@ -114,14 +117,20 @@ describe('local server', () => {
       },
     )
     expect(await apiResponse.json()).toEqual({ ok: true })
-    expect(receivedTokens).toEqual([
-      'Bearer old-session-token',
-      'Bearer new-session-token',
-    ])
-    expect(receivedUrls).toEqual([
-      '/api/test?page=2&state=open',
-      '/api/test?page=2&state=open',
-    ])
+    expect(receivedTokens).toEqual(['Bearer old-session-token'])
+    expect(receivedUrls).toEqual(['/api/test?page=2&state=open'])
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      const ended = await fetch(`${local.origin}/api/ended`, {
+        headers: { cookie: cookie! },
+      })
+      expect(ended.status).toBe(401)
+      expect(await ended.text()).toContain('assert-local login')
+      expect(error).toHaveBeenCalledOnce()
+    } finally {
+      error.mockRestore()
+    }
   })
 
   it('keeps simultaneous inbox and direct-PR sessions authorized in a shared cookie jar', async () => {
@@ -133,7 +142,6 @@ describe('local server', () => {
       configuration,
       session,
       repository: { owner: 'owner', repo: 'first' },
-      refreshSession: async () => session,
       warmIntervalMs: false,
     })
     closers.push(first.close)
@@ -142,7 +150,6 @@ describe('local server', () => {
       session,
       repository: { owner: 'owner', repo: 'second' },
       pullNumber: 123,
-      refreshSession: async () => session,
       warmIntervalMs: false,
     })
     closers.push(second.close)
@@ -202,7 +209,6 @@ describe('local server', () => {
       configuration: { webUrl: web.origin, apiUrl: api.origin },
       session,
       repository: { owner: 'Assert-Labs', repo: 'assert-local' },
-      refreshSession: async () => session,
       warmIntervalMs: 20,
     })
     closers.push(local.close)
@@ -230,7 +236,6 @@ describe('local server', () => {
       configuration: { webUrl: upstream.origin, apiUrl: upstream.origin },
       session,
       repository: { owner: 'owner', repo: 'repo' },
-      refreshSession: async () => session,
     })
     closers.push(local.close)
     await vi.waitFor(() => expect(received).toHaveBeenCalled())

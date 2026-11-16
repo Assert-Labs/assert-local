@@ -1,7 +1,11 @@
 import { execa } from 'execa'
-import { createAssertClient, exchangeGithubToken } from '../assert-api.js'
+import {
+  createAssertClient,
+  GithubAccountMismatchError,
+} from '../assert-api.js'
+import { authenticate } from '../auth.js'
 import { getConfiguration } from '../config.js'
-import { getCurrentRepository, getGhToken } from '../gh.js'
+import { getCurrentRepository } from '../gh.js'
 import { parseReviewTarget } from '../review-target.js'
 import {
   ClustersResponse,
@@ -123,9 +127,16 @@ export async function clustersCommand(
       throw new Error('--wait-until must be usable or ready.')
     const { repository, pullNumber } = await resolveTarget(target, options)
     const configuration = getConfiguration()
-    const exchange = async (signal?: AbortSignal) =>
-      exchangeGithubToken(configuration, await getGhToken(signal), signal)
-    client = createAssertClient(configuration, await exchange(), exchange)
+    const session = await authenticate({
+      configuration,
+      interactive: false,
+    }).catch((error: unknown) => {
+      if (!(error instanceof GithubAccountMismatchError)) throw error
+      throw new Error(
+        `${error.message} Run \`gh auth switch\` to use that account.`,
+      )
+    })
+    client = createAssertClient(configuration, session)
     const path = `/api/v1/pulls/github/${repository}/${pullNumber}/clusters`
     const retryCommand = `assert-local ${clusterId == null ? 'clusters' : `cluster '${clusterId.replaceAll("'", "'\\''")}'`} --repo ${repository} --pr ${pullNumber}`
     const { result, timedOut } = await pollClusters(
@@ -136,7 +147,7 @@ export async function clustersCommand(
             { code?: string; message?: string } | undefined
           const hint =
             response.status === 401
-              ? ' Check your sign-in and repository access with `gh auth status`.'
+              ? ' Check your repository access with `gh auth status`.'
               : response.status === 403
                 ? ' Check your GitHub repository access and Assert account.'
                 : ''
